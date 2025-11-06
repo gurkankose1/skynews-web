@@ -30,6 +30,17 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <footer className="border-t border-white/10 py-8 text-center text-sm text-slate-300">
           © {new Date().getFullYear()} SkyNews.Tr — Tüm hakları saklıdır.
         </footer>
+ {/* Google tag (gtag.js) */}
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-WM5N014GNP"></script>
+<script dangerouslySetInnerHTML={{
+  __html: `
+    window.dataLayer = window.dataLayer || [];
+    function gtag(){dataLayer.push(arguments);}
+    gtag('js', new Date());
+    gtag('config', 'G-WM5N014GNP');
+  `,
+}} />
+
       </body>
     </html>
   );
