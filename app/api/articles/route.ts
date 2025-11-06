@@ -124,16 +124,11 @@ export async function GET(request: Request) {
   // 30’a kes
   let data = ordered.slice(0, 30);
 
-  // "rewrite=tr" ise başlık/özetleri kural tabanlı TR editoryal biçimde yeniden yaz
-  if (rewrite === "tr") {
-    data = data.map(a => rewriteEditorialTR(a));
-  }
-
-  return new NextResponse(JSON.stringify(data), {
-    status: 200,
-    headers: {
-      "content-type": "application/json; charset=utf-8",
-      "Cache-Control": "s-maxage=300, stale-while-revalidate=60",
-    },
+ // "rewrite=tr" ise başlık/özetleri kural tabanlı TR editoryal biçimde yeniden yaz
+if (rewrite === "tr") {
+  data = data.map((a) => {
+    const r = rewriteEditorialTR(a);
+    // id ve category'yi koru; diğer alanları r ile güncelle
+    return { ...a, ...r, id: a.id, category: a.category ?? "" };
   });
 }
