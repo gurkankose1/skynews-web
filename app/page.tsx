@@ -19,7 +19,7 @@ export default function HomePage() {
 
   useEffect(() => {
     // Next.js içindeki kendi API route'unu çağırıyoruz
-    const url = `/api/articles?turkey_first=true`;
+    const url = `/api/articles?turkey_first=true&rewrite=tr`;
 
     (async () => {
       try {
