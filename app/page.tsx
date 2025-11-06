@@ -19,7 +19,7 @@ export default function HomePage() {
 
   useEffect(() => {
     const API = process.env.NEXT_PUBLIC_API_URL ?? "https://skynews-backend.onrender.com";
-    const url = `${API}/articles?turkey_first=true`;
+const url = `/api/articles?turkey_first=true`;
 
     fetch(url)
       .then(async (r) => {
