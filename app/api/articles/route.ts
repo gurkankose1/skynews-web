@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { XMLParser } from "fast-xml-parser";
+import { rewriteEditorialTR } from "@/lib/seo";
 
 /** Basit alan birleştirici */
 function textOf(x: any) {
@@ -12,6 +13,11 @@ function textOf(x: any) {
 
 function getDomain(u: string) {
   try { return new URL(u).hostname; } catch { return ""; }
+}
+
+function isTurkishDomain(url: string) {
+  const d = getDomain(url).toLowerCase();
+  return d.endsWith(".tr") || d.includes(".gov.tr") || d.includes(".edu.tr");
 }
 
 /** RSS/Atom öğesini normalize et */
@@ -84,8 +90,12 @@ async function fetchFeed(url: string) {
   return [];
 }
 
-export async function GET() {
-  // Çalıştığı bilinen 2 örnek kaynak (isteyince çoğaltırız)
+export async function GET(request: Request) {
+  const { searchParams } = new URL(request.url);
+  const rewrite = searchParams.get("rewrite");         // "tr" gelirse kural tabanlı yeniden yazım
+  const turkeyFirst = searchParams.get("turkey_first") === "true"; // TR kaynakları üste
+
+  // Çalıştığı bilinen 2 örnek kaynak (isteyince çoğaltırız veya FEEDS env ile yönetiriz)
   const FEEDS = [
     "https://www.aviation24.be/feed/",
     "https://simpleflying.com/feed/",
@@ -106,8 +116,18 @@ export async function GET() {
   // yeni → eski
   unique.sort((a, b) => (a.published > b.published ? -1 : 1));
 
+  // TR kaynaklarını üste al (isteğe bağlı)
+  let ordered = turkeyFirst
+    ? [...unique.filter(x => isTurkishDomain(x.link)), ...unique.filter(x => !isTurkishDomain(x.link))]
+    : unique;
+
   // 30’a kes
-  const data = unique.slice(0, 30);
+  let data = ordered.slice(0, 30);
+
+  // "rewrite=tr" ise başlık/özetleri kural tabanlı TR editoryal biçimde yeniden yaz
+  if (rewrite === "tr") {
+    data = data.map(a => rewriteEditorialTR(a));
+  }
 
   return new NextResponse(JSON.stringify(data), {
     status: 200,
