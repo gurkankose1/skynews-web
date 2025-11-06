@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { XMLParser } from "fast-xml-parser";
+// Alias sorununu önlemek için göreli import:
 import { rewriteEditorialTR } from "../../../lib/seo";
 
 /** Basit alan birleştirici */
@@ -7,12 +8,16 @@ function textOf(x: any) {
   if (!x) return "";
   if (typeof x === "string") return x;
   if (typeof x === "number") return String(x);
-  if (x["#text"]) return x["#text"];
+  if ((x as any)["#text"]) return (x as any)["#text"];
   return "";
 }
 
 function getDomain(u: string) {
-  try { return new URL(u).hostname; } catch { return ""; }
+  try {
+    return new URL(u).hostname;
+  } catch {
+    return "";
+  }
 }
 
 function isTurkishDomain(url: string) {
@@ -22,16 +27,14 @@ function isTurkishDomain(url: string) {
 
 /** RSS/Atom öğesini normalize et */
 function normalize(item: any) {
-  const title =
-    textOf(item.title) ||
-    textOf(item["title"]) ||
-    "";
+  const title = textOf(item.title) || textOf(item["title"]) || "";
 
   // Link alanı RSS/Atom’da farklılaşabilir
-  let link =
+  const link =
     (item.link && (item.link["@_href"] || item.link.href)) ||
     (typeof item.link === "string" ? item.link : "") ||
-    textOf(item.id) || "";
+    textOf(item.id) ||
+    "";
 
   const pubRaw =
     item.pubDate ||
@@ -40,13 +43,12 @@ function normalize(item: any) {
     item["dc:date"] ||
     "";
 
-  const published = pubRaw ? new Date(pubRaw).toISOString() : new Date().toISOString();
+  const published = pubRaw
+    ? new Date(pubRaw).toISOString()
+    : new Date().toISOString();
 
   const summary =
-    textOf(item.description) ||
-    textOf(item.summary) ||
-    textOf(item.content) ||
-    "";
+    textOf(item.description) || textOf(item.summary) || textOf(item.content) || "";
 
   return {
     id: link || title || published,
@@ -73,17 +75,17 @@ async function fetchFeed(url: string) {
   const data = parser.parse(xml);
 
   // RSS 2.0
-  const rssItems = data?.rss?.channel?.item;
+  const rssItems = (data as any)?.rss?.channel?.item;
   if (Array.isArray(rssItems)) return rssItems.map(normalize);
   if (rssItems) return [normalize(rssItems)];
 
   // Atom
-  const atomEntries = data?.feed?.entry;
+  const atomEntries = (data as any)?.feed?.entry;
   if (Array.isArray(atomEntries)) return atomEntries.map(normalize);
   if (atomEntries) return [normalize(atomEntries)];
 
   // Bazı WordPress varyasyonları
-  const chItems = data?.channel?.item;
+  const chItems = (data as any)?.channel?.item;
   if (Array.isArray(chItems)) return chItems.map(normalize);
   if (chItems) return [normalize(chItems)];
 
@@ -92,21 +94,21 @@ async function fetchFeed(url: string) {
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
-  const rewrite = searchParams.get("rewrite");         // "tr" gelirse kural tabanlı yeniden yazım
-  const turkeyFirst = searchParams.get("turkey_first") === "true"; // TR kaynakları üste
+  const rewrite = searchParams.get("rewrite"); // "tr" gelirse kural tabanlı yeniden yaz
+  const turkeyFirst = searchParams.get("turkey_first") === "true";
 
-  // Çalıştığı bilinen 2 örnek kaynak (isteyince çoğaltırız veya FEEDS env ile yönetiriz)
+  // Örnek kaynaklar (dilersen FEEDS env ile yönetebilirsin)
   const FEEDS = [
     "https://www.aviation24.be/feed/",
     "https://simpleflying.com/feed/",
   ];
 
   const results = await Promise.allSettled(FEEDS.map(fetchFeed));
-  const merged = results.flatMap(r => (r.status === "fulfilled" ? r.value : []));
+  const merged = results.flatMap((r) => (r.status === "fulfilled" ? r.value : []));
 
   // link/id bazlı uniq
   const seen = new Set<string>();
-  const unique = merged.filter(a => {
+  const unique = merged.filter((a) => {
     const k = a.link || a.id;
     if (!k || seen.has(k)) return false;
     seen.add(k);
@@ -117,18 +119,27 @@ export async function GET(request: Request) {
   unique.sort((a, b) => (a.published > b.published ? -1 : 1));
 
   // TR kaynaklarını üste al (isteğe bağlı)
-  let ordered = turkeyFirst
-    ? [...unique.filter(x => isTurkishDomain(x.link)), ...unique.filter(x => !isTurkishDomain(x.link))]
+  const ordered = turkeyFirst
+    ? [...unique.filter((x) => isTurkishDomain(x.link)), ...unique.filter((x) => !isTurkishDomain(x.link))]
     : unique;
 
   // 30’a kes
   let data = ordered.slice(0, 30);
 
- // "rewrite=tr" ise başlık/özetleri kural tabanlı TR editoryal biçimde yeniden yaz
-if (rewrite === "tr") {
-  data = data.map((a) => {
-    const r = rewriteEditorialTR(a);
-    // id ve category'yi koru; diğer alanları r ile güncelle
-    return { ...a, ...r, id: a.id, category: a.category ?? "" };
+  // "rewrite=tr" ise başlık/özetleri kural tabanlı TR editoryal biçimde yeniden yaz
+  if (rewrite === "tr") {
+    data = data.map((a) => {
+      const r = rewriteEditorialTR(a);
+      // id ve category'yi koru; diğer alanları güncelle
+      return { ...a, ...r, id: a.id, category: a.category ?? "" };
+    });
+  }
+
+  return new NextResponse(JSON.stringify(data), {
+    status: 200,
+    headers: {
+      "content-type": "application/json; charset=utf-8",
+      "Cache-Control": "s-maxage=300, stale-while-revalidate=60",
+    },
   });
 }
