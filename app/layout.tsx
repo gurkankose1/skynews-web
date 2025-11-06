@@ -40,7 +40,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     gtag('config', 'G-WM5N014GNP');
   `,
 }} />
-
       </body>
     </html>
   );
