@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { XMLParser } from "fast-xml-parser";
-import { rewriteEditorialTR } from "@/lib/seo";
+import { rewriteEditorialTR } from "../../../lib/seo";
 
 /** Basit alan birleştirici */
 function textOf(x: any) {
