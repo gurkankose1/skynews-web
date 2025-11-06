@@ -17,8 +17,9 @@ export default function HomePage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    const url = `${process.env.NEXT_PUBLIC_API_URL || ""}/articles?turkey_first=true`;
+useEffect(() => {
+  const API = process.env.NEXT_PUBLIC_API_URL ?? "https://skynews-web.vercel.app/";
+  const url = `${API}/articles?turkey_first=true`;
     fetch(url).then(async (r) => {
       if (!r.ok) throw new Error(await r.text());
       return r.json();
