@@ -1,6 +1,8 @@
 // app/news/[slug]/page.tsx
 import type { Metadata } from "next";
 
+export const dynamic = "force-dynamic"; // sayfayı her istekte tazele
+
 type Article = {
   id: string;
   title: string;
@@ -16,20 +18,28 @@ type Article = {
 };
 
 async function getArticles(): Promise<Article[]> {
-  // Aynı sunucudaki API'den TR yeniden yazılmış listeyi al
-  const res = await fetch(`${process.env.NEXT_PUBLIC_SITE_ORIGIN ?? ""}/api/articles?turkey_first=true&rewrite=tr`, {
-    // prod’da 2 dk’da bir yenile
-    next: { revalidate: 120 },
+  // Önce göreli istek (aynı origin), cache kapalı
+  const res = await fetch(`/api/articles?turkey_first=true&rewrite=tr`, {
+    cache: "no-store",
   }).catch(() => null as any);
 
-  if (!res || !res.ok) {
-    // Origin env yoksa göreli fetch’e düş
-    const fallback = await fetch(`/api/articles?turkey_first=true&rewrite=tr`, { cache: "no-store" }).catch(() => null as any);
-    if (!fallback || !fallback.ok) return [];
-    return (await fallback.json()) as Article[];
+  if (res && res.ok) {
+    return (await res.json()) as Article[];
   }
 
-  return (await res.json()) as Article[];
+  // (Opsiyonel) Env varsa mutlak URL ile bir kez daha dene
+  const origin = process.env.NEXT_PUBLIC_SITE_ORIGIN || "";
+  if (origin) {
+    const res2 = await fetch(
+      `${origin}/api/articles?turkey_first=true&rewrite=tr`,
+      { cache: "no-store" }
+    ).catch(() => null as any);
+    if (res2 && res2.ok) {
+      return (await res2.json()) as Article[];
+    }
+  }
+
+  return [];
 }
 
 async function getBySlug(slug: string): Promise<Article | null> {
@@ -37,15 +47,19 @@ async function getBySlug(slug: string): Promise<Article | null> {
   return list.find((a) => a.slug === slug) ?? null;
 }
 
-// SEO meta
-export async function generateMetadata({ params }: { params: { slug: string } }): Promise<Metadata> {
+/** SEO meta */
+export async function generateMetadata({
+  params,
+}: {
+  params: { slug: string };
+}): Promise<Metadata> {
   const item = await getBySlug(params.slug);
   if (!item) return { title: "Haber Bulunamadı | SkyNews.Tr" };
 
   const title = item.title;
   const desc = item.metaDescription || item.summary || "";
   const origin = process.env.NEXT_PUBLIC_SITE_ORIGIN || "";
-  const url = `${origin}/news/${item.slug}`;
+  const url = `${origin ? origin : ""}/news/${item.slug}`;
 
   return {
     title,
@@ -62,11 +76,28 @@ export async function generateMetadata({ params }: { params: { slug: string } })
   };
 }
 
-export default async function NewsDetail({ params }: { params: { slug: string } }) {
+export default async function NewsDetail({
+  params,
+}: {
+  params: { slug: string };
+}) {
   const item = await getBySlug(params.slug);
 
   if (!item) {
-    return <main className="max-w-3xl mx-auto p-4 md:p-6">Haber bulunamadı.</main>;
+    // Kullanıcıya temiz mesaj
+    return (
+      <main className="max-w-3xl mx-auto p-4 md:p-6">
+        <h1 className="text-xl font-semibold mb-2">Haber bulunamadı</h1>
+        <p className="text-slate-300">
+          Bu slug için içerik bulunamadı. Lütfen ana sayfadan tekrar deneyin.
+        </p>
+        <div className="mt-6">
+          <a href="/" className="text-sm underline">
+            ← Ana sayfaya dön
+          </a>
+        </div>
+      </main>
+    );
   }
 
   const jsonLd = {
@@ -82,7 +113,10 @@ export default async function NewsDetail({ params }: { params: { slug: string } 
 
   return (
     <main className="max-w-3xl mx-auto p-4 md:p-6">
-      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+      />
 
       <div className="text-xs text-slate-400 mb-2">
         {item.source} • {new Date(item.published).toLocaleString("tr-TR")}
@@ -95,15 +129,22 @@ export default async function NewsDetail({ params }: { params: { slug: string } 
       )}
 
       <div className="mt-6 text-sm text-slate-400">
-        Bu içerik SkyNews.Tr editoryal ekibi tarafından otomatik olarak yeniden yazılmıştır.
+        Bu içerik SkyNews.Tr editoryal ekibi tarafından otomatik yeniden yazılmıştır.
         Tüm ayrıntılar ve özgün metin için kaynağı ziyaret edin:{" "}
-        <a className="underline" href={item.originalLink ?? item.link} target="_blank" rel="noreferrer">
+        <a
+          className="underline"
+          href={item.originalLink ?? item.link}
+          target="_blank"
+          rel="noreferrer"
+        >
           {item.originalLink ?? item.link}
         </a>
       </div>
 
       <div className="mt-8">
-        <a href="/" className="text-sm underline">← Ana sayfaya dön</a>
+        <a href="/" className="text-sm underline">
+          ← Ana sayfaya dön
+        </a>
       </div>
     </main>
   );
