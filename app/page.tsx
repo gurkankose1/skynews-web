@@ -10,6 +10,7 @@ type Article = {
   published: string;
   summary?: string;
   category?: string;
+  slug: string;              // <-- detay sayfası için eklendi
 };
 
 export default function HomePage() {
@@ -18,7 +19,7 @@ export default function HomePage() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    // Next.js içindeki kendi API route'unu çağırıyoruz
+    // TR öncelikli + kural tabanlı Türkçe yeniden yazım
     const url = `/api/articles?turkey_first=true&rewrite=tr`;
 
     (async () => {
@@ -29,7 +30,6 @@ export default function HomePage() {
           throw new Error(`HTTP ${r.status} – ${txt}`);
         }
         const data = await r.json();
-        // API bazen doğrudan dizi, bazen {articles: []} dönebilir; ikisini de destekle
         const list: Article[] = Array.isArray(data) ? data : (data.articles ?? []);
         setItems(list);
       } catch (e: any) {
@@ -56,9 +56,7 @@ export default function HomePage() {
         {items.map((a) => (
           <a
             key={a.id}
-            href={a.link}
-            target="_blank"
-            rel="noreferrer"
+            href={`/news/${a.slug}`} // <-- artık kendi detay sayfamıza gidiyor
             className="rounded-xl border border-white/10 bg-white/5 p-5 hover:border-white/20 hover:shadow-md transition"
           >
             <div className="text-xs text-slate-300 mb-2">
