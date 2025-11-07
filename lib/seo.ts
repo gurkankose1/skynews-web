@@ -1,87 +1,104 @@
-// lib/seo.ts
-// Basit, ücretsiz, kural tabanlı TR "editoryal yeniden yazım" yardımcıları.
-// Amaç: özgünlük + SEO uyumu + kaynak atfı. LLM yok, API yok.
+// rewriteEditorialTR: kural tabanlı, deterministik, API gerektirmez.
+// Girdi: title (orijinal), summary (orijinal), source, url, published
+// Çıktı: { title: string, summary: string, seoTitle: string, seoDescription: string }
+import { format } from "date-fns";
+import { tr } from "date-fns/locale";
 
-// Çok temel EN->TR sözcük eşleştirme (bilgilendirici başlık için yeterli)
-const EN_TR = [
-  [/announces?/gi, "duyurdu"],
-  [/launch(es|ed|ing)?/gi, "başlattı"],
-  [/introduc(es|ed|ing|e)?/gi, "tanıttı"],
-  [/expand(s|ed|ing|s)?/gi, "genişledi"],
-  [/adds?/gi, "ekledi"],
-  [/opens?/gi, "açtı"],
-  [/routes?/gi, "hat"],
-  [/flights?/gi, "uçuş"],
-  [/orders?/gi, "sipariş"],
-  [/deliver(y|ies)/gi, "teslimat"],
-  [/investment/gi, "yatırım"],
-  [/stake/gi, "hisse"],
-  [/judge/gi, "mahkeme"],
-  [/dismiss(es|ed|ing)?/gi, "düşürdü"],
-  [/crash/gi, "kaza"],
-  [/investigation/gi, "soruşturma"],
-  [/fleet/gi, "filo"],
-  [/farewell/gi, "veda"],
-  [/final/gi, "son"],
-  [/expands?/gi, "genişliyor"],
-  [/cuts?/gi, "kesti"],
-  [/cancellations?/gi, "iptaller"],
-  [/summer/gi, "yaz"],
-  [/winter/gi, "kış"],
-];
+const TERM_MAP: Record<string, string> = {
+  "aircraft": "uçak",
+  "airline": "havayolu",
+  "pilot": "pilot",
+  "flight": "uçuş",
+  "airport": "havaalanı",
+  "cargo": "kargo",
+  "left": "ayrıldı",
+  "right": "sağ",
+  "crash": "kaza",
+  "deal": "anlaşma",
+  "order": "sipariş",
+  "fleet": "filo",
+  "contract": "sözleşme",
+  "deliveries": "teslimatlar",
+  "deliver": "teslim etmek",
+  "chief": "baş",
+  "CEO": "CEO",
+  "cost": "maliyet",
+  "operating cost": "işletme maliyeti",
+  "prices": "fiyatlar",
+  // ekleyin: sık kullanılan aviation terimleri
+};
 
-function enToTrLite(s: string): string {
-  let out = s;
-  for (const [re, tr] of EN_TR) out = out.replace(re as RegExp, tr as string);
+// Basit kelime eşleme
+function translateTerms(text = "") {
+  if (!text) return "";
+  let out = text;
+  for (const [en, trTerm] of Object.entries(TERM_MAP)) {
+    const re = new RegExp(`\\b${escapeRegExp(en)}\\b`, "ig");
+    out = out.replace(re, (m) => {
+      // koruma: uppercase uygunsa aynı şekilde bırak
+      if (m === m.toUpperCase()) return trTerm.toUpperCase();
+      if (m[0] === m[0].toUpperCase()) return trTerm.charAt(0).toUpperCase() + trTerm.slice(1);
+      return trTerm;
+    });
+  }
   return out;
 }
 
-function hostToName(host: string): string {
-  const h = host.replace(/^www\./, "");
-  if (h.includes("simpleflying")) return "Simple Flying";
-  if (h.includes("aviation24")) return "Aviation24";
-  if (h.includes("airporthaber")) return "AirportHaber";
-  return h;
+function escapeRegExp(string: string) {
+  return string.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-function formatDateTR(iso: string): string {
-  try {
-    return new Date(iso).toLocaleString("tr-TR", {
-      year: "numeric", month: "short", day: "2-digit",
-      hour: "2-digit", minute: "2-digit"
-    });
-  } catch { return iso; }
+// Özlü, aktif cümle kurmak için basit dönüşümler
+function makeActiveVoice(summary = "") {
+  // Çok basit: passive çubuk ifadelerini değiştir
+  // örn: "was delivered" -> "teslim edildi" (kısa)
+  let s = summary;
+  s = s.replace(/\\bwas\\b\\s+([a-z]+)/ig, (m, p1) => `${p1} edildi`);
+  s = s.replace(/\\bwere\\b\\s+([a-z]+)/ig, (m, p1) => `${p1} edildi`);
+  // küçük eklemeler:
+  s = s.replace(/\\bhas been\\b/ig, "zaten");
+  return s;
 }
 
-export function rewriteEditorialTR(a: {
+export function rewriteEditorialTR(params: {
   title: string;
   summary?: string;
-  link: string;
-  source: string;
-  published: string;
+  url?: string;
+  source?: string;
+  published?: string | Date;
 }) {
-  const hostName = hostToName(a.source || "");
-  const trTitleCore = enToTrLite(a.title || "").trim();
+  const { title, summary = "", url = "", source = "", published } = params;
 
-  // SEO başlık (özgün, editor üslubu, marka/tema + tarih)
-  const seoTitle = `${trTitleCore || a.title} | ${hostName} özeti – ${formatDateTR(a.published)}`;
+  // 1. Başlık için çeviri + SEO düzeni: "Konu — Kaynak özeti — GG AAA"
+  const translatedTitle = translateTerms(title);
+  const datePart = published ? format(new Date(published), "dd MMM yyyy", { locale: tr }) : "";
+  const seoTitle = `${translatedTitle} — ${source ? source : "Haber"}${datePart ? " — " + datePart : ""}`;
 
-  // Özgün TR özet (kaynak atfı + tarafsız, kısa paragraf)
-  const cleanSummary = (a.summary || "").replace(/<[^>]+>/g, "").trim();
-  const seoSummary =
-    `${hostName} tarafından aktarılan gelişmeye göre: ` +
-    `${cleanSummary ? enToTrLite(cleanSummary) : "Haber detayları kaynakta yer alıyor."} ` +
-    `Bu içerik SkyNews.Tr editoryal ekibi tarafından otomatik özetlenmiştir; ` +
-    `tüm detaylar için kaynağa gidiniz.`;
+  // 2. Özet: temel çeviriler + aktif yapı + 1-2 cümle, 140-200 karakter arası (kısalt)
+  let tSummary = translateTerms(summary);
+  tSummary = makeActiveVoice(tSummary);
+  // Temizlik: HTML etiketleri temizle
+  tSummary = tSummary.replace(/<\/?!?[^>]+(>|$)/g, "");
+  // Kısalt (yaklaşık)
+  if (tSummary.length > 220) {
+    tSummary = tSummary.slice(0, 210).trim();
+    const lastSpace = tSummary.lastIndexOf(" ");
+    if (lastSpace > 150) tSummary = tSummary.slice(0, lastSpace) + "...";
+  }
 
-  // SEO açıklama (meta description gibi, 150-170 karakter hedef)
-  const metaDescription = `${trTitleCore || a.title} – ${hostName} haberinden derlenen kısa özet. Tüm ayrıntılar ve özgün metin için kaynağı ziyaret ediniz.`;
+  // 3. meta description daha kısa
+  let seoDesc = tSummary;
+  if (!seoDesc && title) {
+    seoDesc = translateTerms(title);
+  }
 
   return {
-    ...a,
-    title: seoTitle,
-    summary: seoSummary,
-    metaDescription,
-    attribution: hostName,
+    title: translatedTitle,
+    summary: tSummary,
+    seoTitle,
+    seoDescription: seoDesc,
+    source,
+    url,
+    published: published ? new Date(published).toISOString() : undefined,
   };
 }
